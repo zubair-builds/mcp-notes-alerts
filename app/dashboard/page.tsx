@@ -1,7 +1,8 @@
 import { count, desc, eq, gte, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { alerts, mcpCalls, notes } from "@/lib/db/schema";
+import { alerts, mcpCalls, notes, accessLogs } from "@/lib/db/schema";
 import { KeysPanel } from "./keys-panel";
+import { GeminiSetup } from "./gemini-setup";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,19 @@ async function getDashboardData() {
       .from(mcpCalls)
       .orderBy(desc(mcpCalls.createdAt))
       .limit(25),
+    db
+      .select({
+        id: accessLogs.id,
+        method: accessLogs.method,
+        path: accessLogs.path,
+        statusCode: accessLogs.statusCode,
+        userAgent: accessLogs.userAgent,
+        latencyMs: accessLogs.latencyMs,
+        createdAt: accessLogs.createdAt,
+      })
+      .from(accessLogs)
+      .orderBy(desc(accessLogs.createdAt))
+      .limit(25),
   ]);
 
   const totalCalls = totalCallsRow?.n ?? 0;
@@ -61,6 +75,7 @@ async function getDashboardData() {
     callsByDay,
     topTools,
     recentCalls,
+    recentLogs,
   };
 }
 
@@ -119,6 +134,10 @@ export default async function DashboardPage() {
               )}
             </tbody>
           </table>
+
+          <div style={{ marginTop: 32 }}>
+            <GeminiSetup />
+          </div>
         </div>
 
         <KeysPanel />
@@ -147,6 +166,39 @@ export default async function DashboardPage() {
             {data.recentCalls.length === 0 && (
               <tr>
                 <td style={{ color: "#9aa3ad", padding: "6px 0" }}>No calls yet -- connect a client and try a tool.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </section>
+
+      <section style={{ margin: "32px 0" }}>
+        <h2 style={{ fontSize: 16 }}>Connection Logs (Pings & Hits)</h2>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, tableLayout: "fixed" }}>
+          <thead>
+            <tr style={{ textAlign: "left", color: "#9aa3ad" }}>
+              <th style={{ fontWeight: 400, padding: "6px 0", width: "10%" }}>Status</th>
+              <th style={{ fontWeight: 400, width: "10%" }}>Method</th>
+              <th style={{ fontWeight: 400, width: "30%" }}>Path</th>
+              <th style={{ fontWeight: 400, width: "10%" }}>Latency</th>
+              <th style={{ fontWeight: 400, width: "20%" }}>User Agent</th>
+              <th style={{ fontWeight: 400, width: "20%" }}>When</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.recentLogs.map((l) => (
+              <tr key={l.id} style={{ borderBottom: "1px solid #1f232c" }}>
+                <td style={{ padding: "6px 0", color: l.statusCode >= 400 ? "#f87171" : "#4ade80" }}>{l.statusCode}</td>
+                <td>{l.method}</td>
+                <td style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingRight: 16 }} title={l.path}>{l.path}</td>
+                <td>{l.latencyMs}ms</td>
+                <td style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingRight: 16, color: "#9aa3ad" }} title={l.userAgent || "Unknown"}>{l.userAgent || "-"}</td>
+                <td style={{ color: "#9aa3ad" }}>{new Date(l.createdAt).toLocaleString()}</td>
+              </tr>
+            ))}
+            {data.recentLogs.length === 0 && (
+              <tr>
+                <td style={{ color: "#9aa3ad", padding: "6px 0" }} colSpan={6}>No connection logs yet.</td>
               </tr>
             )}
           </tbody>

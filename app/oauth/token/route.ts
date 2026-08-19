@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { withAccessLogging } from "@/lib/logging";
 
-export async function POST(req: NextRequest) {
+async function tokenHandler(req: NextRequest) {
   const contentType = req.headers.get("content-type") || "";
   let body: Record<string, string> = {};
 
@@ -25,6 +26,8 @@ export async function POST(req: NextRequest) {
     }
   });
 }
+
+export const POST = withAccessLogging(tokenHandler);
 
 export async function OPTIONS() {
   return new Response(null, {

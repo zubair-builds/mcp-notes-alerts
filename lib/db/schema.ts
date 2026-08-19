@@ -66,7 +66,19 @@ export const mcpCalls = pgTable("mcp_calls", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const accessLogs = pgTable("access_logs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  method: text("method").notNull(),
+  path: text("path").notNull(),
+  statusCode: integer("status_code").notNull(),
+  userAgent: text("user_agent"),
+  ip: text("ip"),
+  latencyMs: integer("latency_ms").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type Note = typeof notes.$inferSelect;
 export type Alert = typeof alerts.$inferSelect;
 export type McpCall = typeof mcpCalls.$inferSelect;
+export type AccessLog = typeof accessLogs.$inferSelect;

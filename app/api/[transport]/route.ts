@@ -1,6 +1,7 @@
 import { createMcpHandler, withMcpAuth } from "mcp-handler";
 import { verifyApiKey } from "@/lib/auth";
 import { registerTools } from "@/lib/mcp/tools";
+import { withAccessLogging } from "@/lib/logging";
 
 /**
  * This single dynamic route serves BOTH transports mcp-handler v1
@@ -35,4 +36,6 @@ const authHandler = withMcpAuth(handler, verifyApiKey, {
   resourceMetadataPath: "/.well-known/oauth-protected-resource",
 });
 
-export { authHandler as GET, authHandler as POST, authHandler as DELETE };
+const loggedHandler = withAccessLogging(authHandler);
+
+export { loggedHandler as GET, loggedHandler as POST, loggedHandler as DELETE };

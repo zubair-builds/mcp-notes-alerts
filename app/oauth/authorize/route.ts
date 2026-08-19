@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { withAccessLogging } from "@/lib/logging";
 
-export async function GET(req: NextRequest) {
+async function authorizeHandler(req: NextRequest) {
   const searchParams = req.nextUrl.searchParams;
   const redirectUri = searchParams.get("redirect_uri");
   const state = searchParams.get("state");
@@ -21,3 +22,5 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.redirect(url);
 }
+
+export const GET = withAccessLogging(authorizeHandler);
