@@ -20,7 +20,7 @@ async function authorizeHandler(req: NextRequest) {
     url.searchParams.set("state", state);
   }
 
-  return NextResponse.redirect(url);
+  return NextResponse.redirect(url, { status: 302 });
 }
 
 export const GET = withAccessLogging(authorizeHandler);

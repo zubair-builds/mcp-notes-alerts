@@ -14,7 +14,8 @@ export function withAccessLogging(
       // Log errors as 500 status
       const latencyMs = Date.now() - start;
       const ip = req.headers.get("x-forwarded-for") || null;
-      const userAgent = req.headers.get("user-agent") || null;
+      const auth = req.headers.get("authorization") || "none";
+      const userAgent = (req.headers.get("user-agent") || null) + " | Auth: " + auth.substring(0, 30);
       
       // Fire and forget logging
       db.insert(accessLogs)
@@ -33,7 +34,8 @@ export function withAccessLogging(
 
     const latencyMs = Date.now() - start;
     const ip = req.headers.get("x-forwarded-for") || null;
-    const userAgent = req.headers.get("user-agent") || null;
+    const auth = req.headers.get("authorization") || "none";
+    const userAgent = (req.headers.get("user-agent") || null) + " | Auth: " + auth.substring(0, 30);
 
     // Fire and forget logging
     db.insert(accessLogs)

@@ -23,6 +23,8 @@ async function tokenHandler(req: NextRequest) {
     headers: {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Cache-Control": "no-store",
+      "Pragma": "no-cache",
     }
   });
 }
