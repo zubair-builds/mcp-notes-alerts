@@ -17,9 +17,9 @@ type FeedItem = {
 };
 
 async function getOverview() {
-  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
 
   const [
     [callsToday],
@@ -35,19 +35,19 @@ async function getOverview() {
     activeAlerts,
     clients,
   ] = await Promise.all([
-    db.select({ n: count() }).from(mcpCalls).where(gte(mcpCalls.createdAt, dayAgo as any)),
+    db.select({ n: count() }).from(mcpCalls).where(gte(mcpCalls.createdAt, dayAgo)),
     db
       .select({ n: count() })
       .from(mcpCalls)
       .where(
-        sql`${mcpCalls.createdAt} >= ${twoDaysAgo} and ${mcpCalls.createdAt} < ${dayAgo}`,
+        sql`${mcpCalls.createdAt} >= ${twoDaysAgo.toISOString()} and ${mcpCalls.createdAt} < ${dayAgo.toISOString()}`,
       ),
     db
       .select({ n: count() })
       .from(mcpCalls)
-      .where(sql`${mcpCalls.status} = 'error' and ${mcpCalls.createdAt} >= ${dayAgo}`),
-    db.select({ n: count() }).from(notes).where(gte(notes.createdAt, weekAgo as any)),
-    db.select({ n: count() }).from(mcpCalls).where(gte(mcpCalls.createdAt, weekAgo as any)),
+      .where(sql`${mcpCalls.status} = 'error' and ${mcpCalls.createdAt} >= ${dayAgo.toISOString()}`),
+    db.select({ n: count() }).from(notes).where(gte(notes.createdAt, weekAgo)),
+    db.select({ n: count() }).from(mcpCalls).where(gte(mcpCalls.createdAt, weekAgo)),
     db
       .select({ day: sql<string>`to_char(${mcpCalls.createdAt}, 'YYYY-MM-DD')`, n: count() })
       .from(mcpCalls)
