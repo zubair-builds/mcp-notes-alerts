@@ -12,16 +12,12 @@ export async function POST(req: NextRequest) {
     body = await req.json();
   }
 
-  // Very basic validation for the mock flow
-  if (body.grant_type !== "authorization_code" || !body.code) {
-    return NextResponse.json({ error: "invalid_request" }, { status: 400 });
-  }
-
-  // Return our hardcoded mock access token
+  // Return our hardcoded mock access token regardless of grant_type
   return NextResponse.json({
     access_token: "mcp_live_mock_token_9999",
     token_type: "Bearer",
     expires_in: 31536000, // 1 year
+    refresh_token: "mock_refresh_token_12345"
   }, {
     headers: {
       "Access-Control-Allow-Origin": "*",
