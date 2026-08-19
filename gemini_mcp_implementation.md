@@ -1,7 +1,6 @@
 # Gemini Custom App MCP Implementation Details
 
 This document outlines how the Model Context Protocol (MCP) server is implemented and specifically tailored to connect successfully with Gemini Custom Apps. 
-
 Connecting to Gemini requires satisfying strict OAuth 2.0 and URL routing constraints. Since this server does not currently use real user accounts, we use a "Mock OAuth" flow that satisfies Gemini's requirements while keeping the deployment simple.
 
 ## 1. Clean URL Routing (`middleware.ts`)
