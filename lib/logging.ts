@@ -18,16 +18,20 @@ export function withAccessLogging(
       const userAgent = (req.headers.get("user-agent") || null) + " | Auth: " + auth.substring(0, 30);
       
       // Fire and forget logging
-      db.insert(accessLogs)
-        .values({
-          method: req.method,
-          path: req.nextUrl.pathname,
-          statusCode: 500,
-          userAgent,
-          ip,
-          latencyMs,
-        })
-        .catch(console.error);
+      try {
+        db.insert(accessLogs)
+          .values({
+            method: req.method,
+            path: req.nextUrl.pathname,
+            statusCode: 500,
+            userAgent,
+            ip,
+            latencyMs,
+          })
+          .catch(console.error);
+      } catch (logErr) {
+        console.error("Failed to log access (sync throw):", logErr);
+      }
 
       throw err;
     }
@@ -38,16 +42,20 @@ export function withAccessLogging(
     const userAgent = (req.headers.get("user-agent") || null) + " | Auth: " + auth.substring(0, 30);
 
     // Fire and forget logging
-    db.insert(accessLogs)
-      .values({
-        method: req.method,
-        path: req.nextUrl.pathname,
-        statusCode: res.status,
-        userAgent,
-        ip,
-        latencyMs,
-      })
-      .catch(console.error);
+    try {
+      db.insert(accessLogs)
+        .values({
+          method: req.method,
+          path: req.nextUrl.pathname,
+          statusCode: res.status,
+          userAgent,
+          ip,
+          latencyMs,
+        })
+        .catch(console.error);
+    } catch (logErr) {
+      console.error("Failed to log access (sync throw):", logErr);
+    }
 
     return res;
   };

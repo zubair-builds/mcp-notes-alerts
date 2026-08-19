@@ -1,7 +1,8 @@
 import { protectedResourceHandler, getPublicOrigin, metadataCorsOptionsRequestHandler } from "mcp-handler";
 import type { NextRequest } from "next/server";
+import { withAccessLogging } from "@/lib/logging";
 
-export function GET(req: NextRequest) {
+function getHandler(req: NextRequest) {
   const origin = getPublicOrigin(req);
   const handler = protectedResourceHandler({
     authServerUrls: [origin],
@@ -10,4 +11,6 @@ export function GET(req: NextRequest) {
   return handler(req);
 }
 
-export const OPTIONS = metadataCorsOptionsRequestHandler();
+export const GET = withAccessLogging(getHandler);
+
+export const OPTIONS = withAccessLogging(metadataCorsOptionsRequestHandler());

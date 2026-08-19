@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getPublicOrigin } from "mcp-handler";
+import { withAccessLogging } from "@/lib/logging";
 
-export async function GET(req: NextRequest) {
+async function getHandler(req: NextRequest) {
   const origin = getPublicOrigin(req);
   return NextResponse.json(
     {
@@ -21,7 +22,7 @@ export async function GET(req: NextRequest) {
   );
 }
 
-export async function OPTIONS() {
+async function optionsHandler() {
   return new Response(null, {
     headers: {
       "Access-Control-Allow-Origin": "*",
@@ -30,3 +31,6 @@ export async function OPTIONS() {
     },
   });
 }
+
+export const GET = withAccessLogging(getHandler);
+export const OPTIONS = withAccessLogging(optionsHandler);
