@@ -13,7 +13,7 @@ export function withAccessLogging(
     } catch (err) {
       // Log errors as 500 status
       const latencyMs = Date.now() - start;
-      const ip = req.headers.get("x-forwarded-for") || req.ip || null;
+      const ip = req.headers.get("x-forwarded-for") || null;
       const userAgent = req.headers.get("user-agent") || null;
       
       // Fire and forget logging
@@ -32,7 +32,7 @@ export function withAccessLogging(
     }
 
     const latencyMs = Date.now() - start;
-    const ip = req.headers.get("x-forwarded-for") || req.ip || null;
+    const ip = req.headers.get("x-forwarded-for") || null;
     const userAgent = req.headers.get("user-agent") || null;
 
     // Fire and forget logging

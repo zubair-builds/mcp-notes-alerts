@@ -17,6 +17,7 @@ async function getDashboardData() {
     callsByDay,
     topTools,
     recentCalls,
+    recentLogs,
   ] = await Promise.all([
     db.select({ n: count() }).from(mcpCalls),
     db.select({ n: count() }).from(notes),
