@@ -1,35 +1,57 @@
-import { count, desc, eq, gte, sql } from "drizzle-orm";
+import Link from "next/link";
+import { count, desc, eq, gte, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { alerts, mcpCalls, notes, accessLogs } from "@/lib/db/schema";
-import { KeysPanel } from "./keys-panel";
-import { GeminiSetup } from "./gemini-setup";
+import { alerts, apiKeys, mcpCalls, notes } from "@/lib/db/schema";
+import { excerpt, relativeTime } from "./format";
 
 export const dynamic = "force-dynamic";
 
-async function getDashboardData() {
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+type FeedItem = {
+  key: string;
+  kind: "note" | "alert" | "error";
+  at: Date;
+  actor: string;
+  title: string;
+  body?: string;
+  meta?: string;
+};
+
+async function getOverview() {
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const twoDaysAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
 
   const [
-    [totalCallsRow],
-    [totalNotesRow],
-    [activeAlertsRow],
-    [errorRow],
+    [callsToday],
+    [callsPrevDay],
+    [errorsToday],
+    [notesWeek],
+    [callsWeek],
     callsByDay,
     topTools,
-    recentCalls,
-    recentLogs,
+    recentNotes,
+    firedAlerts,
+    recentErrors,
+    activeAlerts,
+    clients,
   ] = await Promise.all([
-    db.select({ n: count() }).from(mcpCalls),
-    db.select({ n: count() }).from(notes),
-    db.select({ n: count() }).from(alerts).where(eq(alerts.active, true)),
-    db.select({ n: count() }).from(mcpCalls).where(eq(mcpCalls.status, "error")),
+    db.select({ n: count() }).from(mcpCalls).where(gte(mcpCalls.createdAt, dayAgo as any)),
     db
-      .select({
-        day: sql<string>`to_char(${mcpCalls.createdAt}, 'YYYY-MM-DD')`,
-        n: count(),
-      })
+      .select({ n: count() })
       .from(mcpCalls)
-      .where(gte(mcpCalls.createdAt, sevenDaysAgo))
+      .where(
+        sql`${mcpCalls.createdAt} >= ${twoDaysAgo} and ${mcpCalls.createdAt} < ${dayAgo}`,
+      ),
+    db
+      .select({ n: count() })
+      .from(mcpCalls)
+      .where(sql`${mcpCalls.status} = 'error' and ${mcpCalls.createdAt} >= ${dayAgo}`),
+    db.select({ n: count() }).from(notes).where(gte(notes.createdAt, weekAgo as any)),
+    db.select({ n: count() }).from(mcpCalls).where(gte(mcpCalls.createdAt, weekAgo as any)),
+    db
+      .select({ day: sql<string>`to_char(${mcpCalls.createdAt}, 'YYYY-MM-DD')`, n: count() })
+      .from(mcpCalls)
+      .where(gte(mcpCalls.createdAt, weekAgo))
       .groupBy(sql`1`)
       .orderBy(sql`1`),
     db
@@ -37,183 +59,350 @@ async function getDashboardData() {
       .from(mcpCalls)
       .groupBy(mcpCalls.toolName)
       .orderBy(desc(count()))
-      .limit(8),
+      .limit(4),
+    db
+      .select({
+        id: notes.id,
+        title: notes.title,
+        content: notes.content,
+        updatedAt: notes.updatedAt,
+        author: apiKeys.name,
+      })
+      .from(notes)
+      .leftJoin(apiKeys, eq(notes.apiKeyId, apiKeys.id))
+      .orderBy(desc(notes.updatedAt))
+      .limit(6),
+    db
+      .select({
+        id: alerts.id,
+        message: alerts.message,
+        condition: alerts.condition,
+        webhookUrl: alerts.webhookUrl,
+        lastTriggeredAt: alerts.lastTriggeredAt,
+      })
+      .from(alerts)
+      .where(isNotNull(alerts.lastTriggeredAt))
+      .orderBy(desc(alerts.lastTriggeredAt))
+      .limit(3),
     db
       .select({
         id: mcpCalls.id,
         toolName: mcpCalls.toolName,
-        status: mcpCalls.status,
-        latencyMs: mcpCalls.latencyMs,
         errorMessage: mcpCalls.errorMessage,
+        latencyMs: mcpCalls.latencyMs,
         createdAt: mcpCalls.createdAt,
       })
       .from(mcpCalls)
+      .where(eq(mcpCalls.status, "error"))
       .orderBy(desc(mcpCalls.createdAt))
-      .limit(25),
+      .limit(3),
     db
       .select({
-        id: accessLogs.id,
-        method: accessLogs.method,
-        path: accessLogs.path,
-        statusCode: accessLogs.statusCode,
-        userAgent: accessLogs.userAgent,
-        latencyMs: accessLogs.latencyMs,
-        createdAt: accessLogs.createdAt,
+        id: alerts.id,
+        message: alerts.message,
+        active: alerts.active,
+        webhookUrl: alerts.webhookUrl,
+        lastTriggeredAt: alerts.lastTriggeredAt,
       })
-      .from(accessLogs)
-      .orderBy(desc(accessLogs.createdAt))
-      .limit(25),
+      .from(alerts)
+      .orderBy(desc(alerts.active), desc(alerts.createdAt))
+      .limit(4),
+    db
+      .select({ name: apiKeys.name, lastUsedAt: apiKeys.lastUsedAt })
+      .from(apiKeys)
+      .where(eq(apiKeys.revoked, false))
+      .orderBy(desc(apiKeys.lastUsedAt))
+      .limit(4),
   ]);
 
-  const totalCalls = totalCallsRow?.n ?? 0;
-  const errorCount = errorRow?.n ?? 0;
+  const feed: FeedItem[] = [
+    ...recentNotes.map((n) => ({
+      key: `note-${n.id}`,
+      kind: "note" as const,
+      at: n.updatedAt,
+      actor: n.author ? `${n.author} wrote a note` : "Note saved",
+      title: n.title,
+      body: excerpt(n.content, 220),
+    })),
+    ...firedAlerts.map((a) => ({
+      key: `alert-${a.id}`,
+      kind: "alert" as const,
+      at: a.lastTriggeredAt as Date,
+      actor: "Alert fired",
+      title: a.message,
+      body: JSON.stringify(a.condition),
+      meta: a.webhookUrl ? "webhook posted" : "no webhook",
+    })),
+    ...recentErrors.map((c) => ({
+      key: `err-${c.id}`,
+      kind: "error" as const,
+      at: c.createdAt,
+      actor: "Call failed",
+      title: c.errorMessage ?? "Unknown error",
+      meta: `${c.toolName} · ${c.latencyMs}ms`,
+    })),
+  ]
+    .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+    .slice(0, 8);
+
+  const today = callsToday?.n ?? 0;
+  const yesterday = callsPrevDay?.n ?? 0;
 
   return {
-    totalCalls,
-    totalNotes: totalNotesRow?.n ?? 0,
-    activeAlerts: activeAlertsRow?.n ?? 0,
-    errorRate: totalCalls > 0 ? (errorCount / totalCalls) * 100 : 0,
+    today,
+    delta: yesterday > 0 ? Math.round(((today - yesterday) / yesterday) * 100) : null,
+    errorsToday: errorsToday?.n ?? 0,
+    notesWeek: notesWeek?.n ?? 0,
+    callsWeek: callsWeek?.n ?? 0,
     callsByDay,
     topTools,
-    recentCalls,
-    recentLogs,
+    feed,
+    activeAlerts,
+    clients,
   };
 }
 
+const ICONS: Record<FeedItem["kind"], string> = {
+  note: "ph-note-pencil",
+  alert: "ph-bell-ringing",
+  error: "ph-warning-circle",
+};
+
 export default async function DashboardPage() {
-  const data = await getDashboardData();
-  const maxDayCount = Math.max(1, ...data.callsByDay.map((d) => d.n));
+  const d = await getOverview();
+  const maxDay = Math.max(1, ...d.callsByDay.map((x) => x.n));
+  const maxTool = Math.max(1, ...d.topTools.map((t) => t.n));
+  const errorRate = d.today > 0 ? ((d.errorsToday / d.today) * 100).toFixed(1) : "0.0";
 
   return (
-    <main style={{ maxWidth: 960, margin: "0 auto", padding: "40px 24px" }}>
-      <h1 style={{ marginBottom: 4 }}>Dashboard</h1>
-      <p style={{ color: "#9aa3ad", marginTop: 0 }}>Live view of your MCP server's activity.</p>
+    <>
+      <div className="page-head">
+        <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+          <h1 className="page-title">Overview</h1>
+          <p className="muted" style={{ fontSize: 14.5 }}>
+            {new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })} ·{" "}
+            {d.today} {d.today === 1 ? "call" : "calls"} today
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 10 }}>
+          <Link href="/dashboard/activity" className="btn btn-secondary">
+            <i className="ph ph-pulse" style={{ fontSize: 15 }} /> Activity log
+          </Link>
+          <Link href="/dashboard/notes?new=1" className="btn btn-primary">
+            <i className="ph ph-plus" style={{ fontSize: 15 }} /> New note
+          </Link>
+        </div>
+      </div>
 
-      <section style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, margin: "24px 0" }}>
-        <StatCard label="Total calls" value={data.totalCalls} />
-        <StatCard label="Notes" value={data.totalNotes} />
-        <StatCard label="Active alerts" value={data.activeAlerts} />
-        <StatCard label="Error rate" value={`${data.errorRate.toFixed(1)}%`} />
-      </section>
-
-      <section style={{ margin: "32px 0" }}>
-        <h2 style={{ fontSize: 16 }}>Calls, last 7 days</h2>
-        <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 120 }}>
-          {data.callsByDay.length === 0 && <p style={{ color: "#9aa3ad" }}>No calls yet.</p>}
-          {data.callsByDay.map((d) => (
-            <div key={d.day} style={{ textAlign: "center" }}>
-              <div
+      <div className="strip">
+        <div className="strip-cell">
+          <span className="eyebrow">Calls today</span>
+          <span style={{ display: "flex", alignItems: "baseline", gap: 9 }}>
+            <span className="strip-value">{d.today}</span>
+            {d.delta !== null && (
+              <span style={{ fontSize: 12.5, color: d.delta >= 0 ? "var(--color-accent-300)" : "var(--color-neutral-500)" }}>
+                {d.delta >= 0 ? "+" : ""}
+                {d.delta}%
+              </span>
+            )}
+          </span>
+        </div>
+        <div className="strip-cell">
+          <span className="eyebrow">Notes this week</span>
+          <span style={{ display: "flex", alignItems: "baseline", gap: 9 }}>
+            <span className="strip-value">{d.notesWeek}</span>
+            <span className="dim" style={{ fontSize: 12.5 }}>
+              written by agents
+            </span>
+          </span>
+        </div>
+        <div className="strip-cell">
+          <span className="eyebrow">Errors today</span>
+          <span style={{ display: "flex", alignItems: "baseline", gap: 9 }}>
+            <span className="strip-value" style={{ color: d.errorsToday > 0 ? "var(--color-danger)" : undefined }}>
+              {d.errorsToday}
+            </span>
+            <span className="dim" style={{ fontSize: 12.5 }}>
+              {errorRate}% of calls
+            </span>
+          </span>
+        </div>
+        <div className="strip-cell" style={{ flex: 1.3, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 18 }}>
+          <span style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span className="eyebrow">Last 7 days</span>
+            <span className="muted" style={{ fontSize: 12.5 }}>
+              {d.callsWeek.toLocaleString()} calls
+            </span>
+          </span>
+          <span style={{ display: "flex", alignItems: "flex-end", gap: 5, height: 38 }}>
+            {d.callsByDay.map((x, i) => (
+              <span
+                key={x.day}
+                title={`${x.day}: ${x.n} calls`}
                 style={{
-                  height: `${(d.n / maxDayCount) * 100}px`,
-                  width: 32,
-                  background: "#7dd3fc",
-                  borderRadius: 4,
+                  width: 7,
+                  height: `${Math.max(12, (x.n / maxDay) * 100)}%`,
+                  borderRadius: 2,
+                  background:
+                    i === d.callsByDay.length - 1
+                      ? "var(--color-accent)"
+                      : "color-mix(in srgb, var(--color-accent) 30%, transparent)",
+                  boxShadow:
+                    i === d.callsByDay.length - 1
+                      ? "0 0 10px color-mix(in srgb, var(--color-accent) 55%, transparent)"
+                      : undefined,
                 }}
-                title={`${d.n} calls`}
               />
-              <div style={{ fontSize: 11, color: "#9aa3ad", marginTop: 4 }}>{d.day.slice(5)}</div>
-            </div>
-          ))}
+            ))}
+          </span>
         </div>
-      </section>
+      </div>
 
-      <section style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 32, margin: "32px 0" }}>
-        <div>
-          <h2 style={{ fontSize: 16 }}>Top tools</h2>
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-            <tbody>
-              {data.topTools.map((t) => (
-                <tr key={t.tool} style={{ borderBottom: "1px solid #1f232c" }}>
-                  <td style={{ padding: "6px 0" }}>{t.tool}</td>
-                  <td style={{ padding: "6px 0", textAlign: "right", color: "#9aa3ad" }}>{t.n}</td>
-                </tr>
-              ))}
-              {data.topTools.length === 0 && (
-                <tr>
-                  <td style={{ color: "#9aa3ad" }}>No calls yet.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-
-          <div style={{ marginTop: 32 }}>
-            <GeminiSetup />
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.55fr) minmax(0, 1fr)", gap: 44, alignItems: "start" }}>
+        <section style={{ display: "flex", flexDirection: "column", gap: 18, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+            <h2 style={{ fontSize: 15 }}>Written by your agents</h2>
+            <Link href="/dashboard/activity" style={{ fontSize: 13 }}>
+              All activity
+            </Link>
           </div>
-        </div>
 
-        <KeysPanel />
-      </section>
+          {d.feed.length === 0 ? (
+            <div className="empty">
+              Nothing written yet — connect a client from <Link href="/dashboard/connect">Connect</Link> and ask it to
+              save a note.
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {d.feed.map((item) => (
+                <article key={item.key} className="card card-hover" style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <i
+                      className={`ph ${ICONS[item.kind]}`}
+                      style={{ fontSize: 16, color: item.kind === "error" ? "var(--color-danger)" : "var(--color-accent)" }}
+                    />
+                    <span className="muted" style={{ fontSize: 12.5 }}>
+                      {item.actor} · {relativeTime(item.at)}
+                    </span>
+                    {item.meta && (
+                      <span className="mono dim" style={{ marginLeft: "auto", fontSize: 11.5 }}>
+                        {item.meta}
+                      </span>
+                    )}
+                  </div>
+                  <h3 style={{ fontSize: item.kind === "error" ? 14 : 16, fontFamily: item.kind === "error" ? "var(--font-mono)" : undefined }}>
+                    {item.title}
+                  </h3>
+                  {item.body && (
+                    <p
+                      className={item.kind === "alert" ? "mono muted" : "muted"}
+                      style={{ fontSize: item.kind === "alert" ? 12.5 : 14, lineHeight: 1.6, maxWidth: "68ch" }}
+                    >
+                      {item.body}
+                    </p>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
 
-      <section style={{ margin: "32px 0" }}>
-        <h2 style={{ fontSize: 16 }}>Recent activity</h2>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-          <thead>
-            <tr style={{ textAlign: "left", color: "#9aa3ad" }}>
-              <th style={{ fontWeight: 400, padding: "6px 0" }}>Tool</th>
-              <th style={{ fontWeight: 400 }}>Status</th>
-              <th style={{ fontWeight: 400 }}>Latency</th>
-              <th style={{ fontWeight: 400 }}>When</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.recentCalls.map((c) => (
-              <tr key={c.id} style={{ borderBottom: "1px solid #1f232c" }}>
-                <td style={{ padding: "6px 0" }}>{c.toolName}</td>
-                <td style={{ color: c.status === "error" ? "#f87171" : "#4ade80" }}>{c.status}</td>
-                <td>{c.latencyMs}ms</td>
-                <td style={{ color: "#9aa3ad" }}>{new Date(c.createdAt).toLocaleString()}</td>
-              </tr>
-            ))}
-            {data.recentCalls.length === 0 && (
-              <tr>
-                <td style={{ color: "#9aa3ad", padding: "6px 0" }}>No calls yet -- connect a client and try a tool.</td>
-              </tr>
+        <aside style={{ display: "flex", flexDirection: "column", gap: 36 }}>
+          <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+              <h2 style={{ fontSize: 15 }}>Alerts</h2>
+              <Link href="/dashboard/alerts" style={{ fontSize: 13 }}>
+                Manage
+              </Link>
+            </div>
+            {d.activeAlerts.length === 0 ? (
+              <p className="dim" style={{ fontSize: 13 }}>
+                No alerts configured.
+              </p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {d.activeAlerts.map((a, i) => (
+                  <div
+                    key={a.id}
+                    style={{
+                      padding: "14px 4px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 5,
+                      borderTop: i === 0 ? "none" : "1px solid var(--color-hairline)",
+                    }}
+                  >
+                    <span style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                      <span className={`dot ${a.active ? "dot-live" : "dot-off"}`} />
+                      <span style={{ fontSize: 14, color: a.active ? undefined : "var(--color-neutral-500)" }}>{a.message}</span>
+                    </span>
+                    <span className="dim" style={{ fontSize: 12, paddingLeft: 15 }}>
+                      {!a.active
+                        ? "paused"
+                        : `${a.lastTriggeredAt ? `fired ${relativeTime(a.lastTriggeredAt)}` : "never fired"} · ${
+                            a.webhookUrl ? "webhook" : "desktop notification"
+                          }`}
+                    </span>
+                  </div>
+                ))}
+              </div>
             )}
-          </tbody>
-        </table>
-      </section>
+          </section>
 
-      <section style={{ margin: "32px 0" }}>
-        <h2 style={{ fontSize: 16 }}>Connection Logs (Pings & Hits)</h2>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13, tableLayout: "fixed" }}>
-          <thead>
-            <tr style={{ textAlign: "left", color: "#9aa3ad" }}>
-              <th style={{ fontWeight: 400, padding: "6px 0", width: "10%" }}>Status</th>
-              <th style={{ fontWeight: 400, width: "10%" }}>Method</th>
-              <th style={{ fontWeight: 400, width: "30%" }}>Path</th>
-              <th style={{ fontWeight: 400, width: "10%" }}>Latency</th>
-              <th style={{ fontWeight: 400, width: "20%" }}>User Agent</th>
-              <th style={{ fontWeight: 400, width: "20%" }}>When</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.recentLogs.map((l) => (
-              <tr key={l.id} style={{ borderBottom: "1px solid #1f232c" }}>
-                <td style={{ padding: "6px 0", color: l.statusCode >= 400 ? "#f87171" : "#4ade80" }}>{l.statusCode}</td>
-                <td>{l.method}</td>
-                <td style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingRight: 16 }} title={l.path}>{l.path}</td>
-                <td>{l.latencyMs}ms</td>
-                <td style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", paddingRight: 16, color: "#9aa3ad" }} title={l.userAgent || "Unknown"}>{l.userAgent || "-"}</td>
-                <td style={{ color: "#9aa3ad" }}>{new Date(l.createdAt).toLocaleString()}</td>
-              </tr>
-            ))}
-            {data.recentLogs.length === 0 && (
-              <tr>
-                <td style={{ color: "#9aa3ad", padding: "6px 0" }} colSpan={6}>No connection logs yet.</td>
-              </tr>
+          <section style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <h2 style={{ fontSize: 15 }}>Busiest tools</h2>
+            {d.topTools.length === 0 ? (
+              <p className="dim" style={{ fontSize: 13 }}>
+                No calls yet.
+              </p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 13 }}>
+                {d.topTools.map((t) => (
+                  <div key={t.tool} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13.5 }}>
+                      <span className="mono" style={{ fontSize: 12.5, color: "var(--color-neutral-300)" }}>
+                        {t.tool}
+                      </span>
+                      <span className="muted">{t.n}</span>
+                    </div>
+                    <div style={{ height: 3, borderRadius: 2, background: "var(--color-hairline)" }}>
+                      <div
+                        style={{
+                          width: `${(t.n / maxTool) * 100}%`,
+                          height: "100%",
+                          borderRadius: 2,
+                          background: "var(--color-accent)",
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
-          </tbody>
-        </table>
-      </section>
-    </main>
-  );
-}
+          </section>
 
-function StatCard({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div style={{ background: "#12151c", border: "1px solid #1f232c", borderRadius: 8, padding: 16 }}>
-      <div style={{ fontSize: 12, color: "#9aa3ad" }}>{label}</div>
-      <div style={{ fontSize: 24, fontWeight: 600, marginTop: 4 }}>{value}</div>
-    </div>
+          <section
+            style={{
+              padding: "18px 20px",
+              borderRadius: "var(--radius-md)",
+              border: "1px solid color-mix(in srgb, var(--color-accent) 26%, transparent)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 9,
+            }}
+          >
+            <span style={{ fontSize: 14 }}>
+              {d.clients.length} {d.clients.length === 1 ? "client" : "clients"} connected
+            </span>
+            <span className="muted" style={{ fontSize: 12.5, lineHeight: 1.6 }}>
+              {d.clients.length > 0 ? d.clients.map((c) => c.name).join(", ") : "No active keys yet."}
+            </span>
+            <Link href="/dashboard/connect" style={{ fontSize: 13 }}>
+              Issue a key →
+            </Link>
+          </section>
+        </aside>
+      </div>
+    </>
   );
 }
