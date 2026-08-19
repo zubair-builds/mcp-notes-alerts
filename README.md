@@ -1,5 +1,6 @@
 # mcp-mvp
 
+
 A personal MCP server: notes + alerts as tools, backed by Postgres, with a
 dashboard that logs every tool call. Built with Next.js App Router,
 [`mcp-handler`](https://github.com/vercel/mcp-handler) v1, and Drizzle ORM.
