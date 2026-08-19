@@ -67,6 +67,9 @@ A Vercel Cron job (`vercel.json`, once per day) hits
 its `webhookUrl` (if set) when the condition holds. Add new condition
 types in `lib/mcp/alerts.ts`.
 
+> [!NOTE]
+> The cron schedule is set to once per day (`0 0 * * *`) to stay within the limits of the Vercel Hobby (free) tier. If you are on a Pro plan, you can increase this frequency in `vercel.json` (e.g., to `*/15 * * * *` for every 15 minutes).
+
 ## What's deliberately out of scope for this MVP
 
 - **Multi-user / OAuth.** Auth is a single dashboard password + per-client
