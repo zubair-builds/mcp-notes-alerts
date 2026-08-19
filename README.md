@@ -62,7 +62,7 @@ reads from.
 { "type": "note_count_gte", "value": 10 }
 ```
 
-A Vercel Cron job (`vercel.json`, every 15 minutes) hits
+A Vercel Cron job (`vercel.json`, once per day) hits
 `/api/cron/evaluate-alerts`, which checks every active alert and POSTs to
 its `webhookUrl` (if set) when the condition holds. Add new condition
 types in `lib/mcp/alerts.ts`.
