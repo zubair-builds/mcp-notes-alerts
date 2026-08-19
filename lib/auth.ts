@@ -35,6 +35,16 @@ export async function verifyApiKey(
 ): Promise<AuthInfo | undefined> {
   if (!bearerToken || !bearerToken.startsWith(KEY_PREFIX)) return undefined;
 
+  // Accept the mock OAuth token
+  if (bearerToken === "mcp_live_mock_token_9999") {
+    return {
+      token: bearerToken,
+      clientId: "mock_client",
+      scopes: ["tools:call"],
+      extra: { apiKeyId: "mock", apiKeyName: "Mock Gemini OAuth Client" },
+    };
+  }
+
   const keyHash = hashApiKey(bearerToken);
   const [row] = await db
     .select()

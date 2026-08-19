@@ -73,10 +73,10 @@ types in `lib/mcp/alerts.ts`.
 ## What's deliberately out of scope for this MVP
 
 - **Multi-user / OAuth.** Auth is a single dashboard password + per-client
-  API keys -- fine solo, not fine once other people need their own
-  logins. Swap in Clerk's MCP OAuth server or a hand-rolled OAuth 2.1
-  flow (`/authorize`, `/token`, client registration) when you get there.
-- **DCR-based OAuth client registration.** If you do add OAuth, note DCR
+  API keys. **Note:** A mock OAuth 2.0 flow is currently implemented in `app/oauth` and `app/.well-known`
+  specifically to allow the Gemini Custom Apps UI to connect (since Gemini requires standard OAuth).
+  This mock flow automatically approves all authorization requests.
+- **DCR-based OAuth client registration.** If you do add real OAuth, note DCR
   is being deprecated in favor of clients self-describing via an HTTPS
   metadata URL -- don't build against DCR fresh.
 - **Alert condition types beyond the two seeded here.** The DSL is
