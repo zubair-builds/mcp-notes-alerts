@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
       createdAt: notes.createdAt,
     })
     .from(notes)
-    .where(gt(notes.createdAt, sinceDate.toISOString() as any));
+    .where(gt(notes.createdAt, sinceDate));
 
   return NextResponse.json({ notes: newNotes });
 }
