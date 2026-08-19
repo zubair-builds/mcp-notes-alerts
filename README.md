@@ -7,6 +7,7 @@ dashboard that logs every tool call. Built with Next.js App Router,
 
 ## Stack
 
+
 - **Next.js 15** (App Router) -- single deploy serves the MCP endpoint, the
   dashboard, and the key-management API.
 - **`mcp-handler@1`** -- pinned to the 1.x line deliberately: 2.x dropped
