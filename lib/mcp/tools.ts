@@ -6,6 +6,11 @@ import { alerts as alertsTable, apiKeys, mcpCalls, notes } from "../db/schema";
 import { withLogging } from "./logging";
 import { alertConditionSchema } from "./alerts";
 
+export const MCP_SERVER_INFO = {
+  name: "Notify",
+  version: "0.1.0",
+};
+
 /**
  * Registers every tool this MCP server exposes. Each tool is wrapped in
  * withLogging, which pulls the caller's api key id off the per-request

@@ -1,6 +1,6 @@
 import { createMcpHandler, withMcpAuth } from "mcp-handler";
 import { verifyApiKey } from "@/lib/auth";
-import { registerTools } from "@/lib/mcp/tools";
+import { registerTools, MCP_SERVER_INFO } from "@/lib/mcp/tools";
 import { withAccessLogging } from "@/lib/logging";
 
 /**
@@ -23,7 +23,9 @@ const handler = createMcpHandler(
     // variable here -- see lib/mcp/logging.ts's withLogging.
     registerTools(server);
   },
-  {},
+  {
+    serverInfo: MCP_SERVER_INFO,
+  },
   {
     basePath: "/api",
     maxDuration: 60,

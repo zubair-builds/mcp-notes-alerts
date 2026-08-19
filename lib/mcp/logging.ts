@@ -13,7 +13,8 @@ export type ToolCtx = RequestHandlerExtra<ServerRequest, ServerNotification>;
 
 export function getApiKeyId(ctx: ToolCtx | undefined): string | undefined {
   const authInfo = ctx?.authInfo as { clientId?: string; extra?: { apiKeyId?: string } } | undefined;
-  return authInfo?.extra?.apiKeyId ?? authInfo?.clientId;
+  const id = authInfo?.extra?.apiKeyId ?? authInfo?.clientId;
+  return id === "mock" ? undefined : id;
 }
 
 /**
