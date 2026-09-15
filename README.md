@@ -2,8 +2,6 @@
 
 Personal [Model Context Protocol](https://modelcontextprotocol.io/) server: notes and alerts as tools, Postgres behind them, a dashboard that logs every call.
 
-Suggested repo name: `mcp-notes-alerts`.
-
 One Next.js deploy serves `/api/mcp` (Streamable HTTP), `/api/sse` (Claude.ai remote connector), `/dashboard`, and a mock OAuth path so Gemini Custom Apps can connect.
 
 ## Stack
@@ -19,8 +17,8 @@ One Next.js deploy serves `/api/mcp` (Streamable HTTP), `/api/sse` (Claude.ai re
 ## Setup
 
 ```bash
-git clone https://github.com/zubair-builds/mcp-mvp.git
-cd mcp-mvp
+git clone https://github.com/zubair-builds/mcp-notes-alerts.git
+cd mcp-notes-alerts
 npm install
 cp .env.example .env
 # DATABASE_URL, DASHBOARD_PASSWORD, SESSION_SECRET, CRON_SECRET
