@@ -1,97 +1,57 @@
-# mcp-mvp
+# MCP Notes & Alerts
 
+Personal [Model Context Protocol](https://modelcontextprotocol.io/) server: notes and alerts as tools, Postgres behind them, a dashboard that logs every call.
 
-A personal MCP server: notes + alerts as tools, backed by Postgres, with a
-dashboard that logs every tool call. Built with Next.js App Router,
-[`mcp-handler`](https://github.com/vercel/mcp-handler) v1, and Drizzle ORM.
+Suggested repo name: `mcp-notes-alerts`.
+
+One Next.js deploy serves `/api/mcp` (Streamable HTTP), `/api/sse` (Claude.ai remote connector), `/dashboard`, and a mock OAuth path so Gemini Custom Apps can connect.
 
 ## Stack
 
-
-- **Next.js 15** (App Router) -- single deploy serves the MCP endpoint, the
-  dashboard, and the key-management API.
-- **`mcp-handler@1`** -- pinned to the 1.x line deliberately: 2.x dropped
-  the HTTP+SSE transport, and as of this writing claude.ai's remote
-  connector UI still speaks SSE, not just Streamable HTTP. `/api/mcp` and
-  `/api/sse` are both served from `app/api/[transport]/route.ts`.
-- **Postgres** via `drizzle-orm` + `postgres` (works with Neon, Supabase,
-  or any Postgres instance).
-- **API key auth** -- a single shared secret gates the dashboard; each MCP
-  client gets its own bearer-token API key, generated from the dashboard.
+| Layer | Choice |
+| --- | --- |
+| App | Next.js 15 App Router |
+| MCP | `mcp-handler` 1.x + `@modelcontextprotocol/sdk` |
+| Data | Postgres, Drizzle ORM |
+| Auth | Dashboard password + per-client API keys; mock OAuth for Gemini |
+| Cron | Vercel Cron → `/api/cron/evaluate-alerts` |
 
 ## Setup
 
 ```bash
+git clone https://github.com/zubair-builds/mcp-mvp.git
+cd mcp-mvp
 npm install
 cp .env.example .env
-# fill in DATABASE_URL, DASHBOARD_PASSWORD, SESSION_SECRET, CRON_SECRET
-npm run db:generate   # writes SQL migrations from lib/db/schema.ts
-npm run db:migrate    # applies them to DATABASE_URL
+# DATABASE_URL, DASHBOARD_PASSWORD, SESSION_SECRET, CRON_SECRET
+npm run db:generate
+npm run db:migrate
 npm run dev
 ```
 
-Then open `http://localhost:3000/dashboard`, log in with
-`DASHBOARD_PASSWORD`, and create an API key.
+Open [http://localhost:3000/dashboard](http://localhost:3000/dashboard), sign in, create an API key.
 
-## Connecting a client
+- Claude Code / API: `http://localhost:3000/api/mcp` with Bearer token
+- claude.ai remote: `http://localhost:3000/api/sse`
+- Gemini Custom Apps: app URL `/mcp` (middleware routes GET→SSE, POST→HTTP). Details in `gemini_mcp_implementation.md`
 
-- **Claude Code / API**: point it at `http://localhost:3000/api/mcp`
-  (Streamable HTTP), with the API key as a bearer token.
-- **claude.ai remote connectors**: use `http://localhost:3000/api/sse`
-  instead -- that's the transport its connector UI currently speaks.
-- Test either with the [MCP inspector](https://modelcontextprotocol.io/docs/tools/inspector)
-  before wiring up a real client.
+## Tools
 
-## Tools exposed
+| Tool | Role |
+| --- | --- |
+| `create_note` / `list_notes` / `search_notes` / `delete_note` | Notes |
+| `create_alert` / `list_alerts` | Rules + optional webhook |
+| `get_stats` | Call counts for the dashboard |
 
-| Tool | What it does |
-|---|---|
-| `create_note` / `list_notes` / `search_notes` / `delete_note` | Basic note CRUD |
-| `create_alert` / `list_alerts` | Alert rules; see `lib/mcp/alerts.ts` for the condition DSL |
-| `get_stats` | Call counts, top tools, active alerts -- same data as the dashboard |
+Alert example: `{ "type": "note_count_gte", "value": 10 }`.
 
-Every call is logged to `mcp_calls` (tool name, args, status, latency) by
-`lib/mcp/logging.ts`'s `withLogging` wrapper, which is what the dashboard
-reads from.
+## Out of scope
 
-## Alerts
+- Real multi-user OAuth (the Gemini path auto-approves)
+- Rich alert DSL — extend `lib/mcp/alerts.ts`
 
-`create_alert` takes a small JSON condition, e.g.:
+Do not commit `.env`. Rotate `DASHBOARD_PASSWORD` / `SESSION_SECRET` / `CRON_SECRET` before any public deploy.
 
-```json
-{ "type": "note_count_gte", "value": 10 }
-```
+## Author
 
-A Vercel Cron job (`vercel.json`, once per day) hits
-`/api/cron/evaluate-alerts`, which checks every active alert and POSTs to
-its `webhookUrl` (if set) when the condition holds. Add new condition
-types in `lib/mcp/alerts.ts`.
-
-> [!NOTE]
-> The cron schedule is set to once per day (`0 0 * * *`) to stay within the limits of the Vercel Hobby (free) tier. If you are on a Pro plan, you can increase this frequency in `vercel.json` (e.g., to `*/15 * * * *` for every 15 minutes).
-
-## What's deliberately out of scope for this MVP
-
-- **Multi-user / OAuth.** Auth is a single dashboard password + per-client
-  API keys. **Note:** A mock OAuth 2.0 flow is currently implemented in `app/oauth` and `app/.well-known`
-  specifically to allow the Gemini Custom Apps UI to connect (since Gemini requires standard OAuth).
-  This mock flow automatically approves all authorization requests.
-- **DCR-based OAuth client registration.** If you do add real OAuth, note DCR
-  is being deprecated in favor of clients self-describing via an HTTPS
-  metadata URL -- don't build against DCR fresh.
-- **Alert condition types beyond the two seeded here.** The DSL is
-  intentionally minimal; extend `alertConditionSchema` and
-  `evaluateCondition` in `lib/mcp/alerts.ts` as needed.
-
-## Deploying
-
-```bash
-vercel deploy
-```
-
-Set `DATABASE_URL`, `DASHBOARD_PASSWORD`, `SESSION_SECRET`, and
-`CRON_SECRET` as Vercel project env vars (the last one also has to match
-what Vercel Cron sends -- Vercel sets this automatically when
-`CRON_SECRET` is defined as a project env var). `DATABASE_URL` must be
-set at build time too, since `lib/db/index.ts` creates its client at
-module load.
+[Syed Zubair Haider](https://github.com/zubair-builds) · [LinkedIn](https://www.linkedin.com/in/syed-zubair-haider/)
